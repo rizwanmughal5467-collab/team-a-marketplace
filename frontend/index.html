@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Team A - Marketplace Operations</title>
+  <style>
+    /* Premium Dark Theme */
+    :root {
+      --bg: #0B1220;
+      --surface: #111C31;
+      --primary: #3B82F6;
+      --success: #10B981;
+      --warning: #F59E0B;
+      --danger: #F43F5E;
+      --text: #F8FAFC;
+      --text-muted: #94A3B8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 20px; }
+    
+    .container { max-width: 1000px; margin: 0 auto; }
+    h1 { font-size: 24px; margin-bottom: 20px; color: var(--primary); }
+    h2 { font-size: 18px; margin-bottom: 15px; border-bottom: 1px solid #2A3A5A; padding-bottom: 10px; }
+
+    .card { background: var(--surface); padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+    
+    /* Form Styles */
+    .form-group { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
+    input { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #2A3A5A; background: var(--bg); color: var(--text); outline: none; }
+    input:focus { border-color: var(--primary); }
+    button { padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; color: white; transition: 0.2s; }
+    
+    .btn-primary { background: var(--primary); }
+    .btn-primary:hover { background: #2563EB; }
+    .btn-success { background: var(--success); }
+    .btn-danger { background: var(--danger); }
+    .btn-warning { background: var(--warning); }
+    
+    /* Table Styles */
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { padding: 12px; text-align: left; border-bottom: 1px solid #2A3A5A; }
+    th { color: var(--text-muted); font-size: 14px; }
+    .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+    .status-active { background: rgba(16, 185, 129, 0.2); color: var(--success); }
+    .status-completed { background: rgba(59, 130, 246, 0.2); color: var(--primary); }
+    
+    /* Toast Notification */
+    #toast { position: fixed; bottom: 20px; right: 20px; padding: 15px 25px; border-radius: 8px; color: white; font-weight: bold; display: none; z-index: 1000; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>🛒 Marketplace Operations & API Configuration</h1>
+
+  <!-- Add Connection Form -->
+  <div class="card">
+    <h2>Add New Connection</h2>
+    <div class="form-group">
+      <input type="text" id="name" placeholder="Store Name (e.g. My Daraz Store)">
+      <input type="text" id="provider" placeholder="Provider (e.g. daraz, amazon)">
+      <input type="text" id="storeId" placeholder="Store ID (Optional)">
+      <button class="btn-primary" onclick="addConnection()">+ Add Connection</button>
+    </div>
+  </div>
+
+  <!-- Connections List -->
+  <div class="card">
+    <h2>Your Connections</h2>
+    <table id="connectionsTable">
+      <thead>
+        <tr>
+          <th>Store Name</th>
+          <th>Provider</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="connectionsBody">
+        <!-- Data will load here -->
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Sync History (Hidden by default) -->
+  <div class="card" id="historyCard" style="display: none;">
+    <h2 id="historyTitle">Sync History</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Job ID</th>
+          <th>Status</th>
+          <th>Processed</th>
+          <th>Skipped</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody id="historyBody"></tbody>
+    </table>
+    <button class="btn-danger" style="margin-top: 15px;" onclick="document.getElementById('historyCard').style.display='none'">Close History</button>
+  </div>
+</div>
+
+<div id="toast">Message</div>
+
+<script>
+  const API_URL = 'http://localhost:4000/api/operations';
+  
+  // JWT Token (Aapko yeh token make-token.js se lena hai aur yahan paste karna hai)
+  // Agar token expire ho jaye, toh naya token yahan paste kar dein.
+  const TOKEN = prompt("Please paste your JWT Token here:");
+
+  // Toast Notification Function
+  function showToast(msg, type = 'success') {
+    const toast = document.getElementById('toast');
+    toast.innerText = msg;
+    toast.style.background = type === 'success' ? '#10B981' : '#F43F5E';
+    toast.style.display = 'block';
+    setTimeout(() => { toast.style.display = 'none'; }, 3000);
+  }
+
+  // 1. Fetch all connections
+  async function loadConnections() {
+    try {
+      const res = await fetch(`${API_URL}/connections`, {
+        headers: { 'Authorization': `Bearer ${TOKEN}` }
+      });
+      const data = await res.json();
+      
+      if (data.error) return showToast(data.error, 'error');
+
+      const tbody = document.getElementById('connectionsBody');
+      tbody.innerHTML = '';
+
+      if (data.data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4">No connections found. Add one above!</td></tr>';
+        return;
+      }
+
+      data.data.forEach(conn => {
+        tbody.innerHTML += `
+          <tr>
+            <td><b>${conn.name}</b></td>
+            <td>${conn.provider}</td>
+            <td><span class="status-badge status-active">${conn.status}</span></td>
+            <td>
+              <button class="btn-warning" onclick="testConnection('${conn.id}')">Test</button>
+              <button class="btn-primary" onclick="syncConnection('${conn.id}')">Sync</button>
+              <button class="btn-success" onclick="loadHistory('${conn.id}', '${conn.name}')">History</button>
+              <button class="btn-danger" onclick="deleteConnection('${conn.id}')">Delete</button>
+            </td>
+          </tr>
+        `;
+      });
+    } catch (error) {
+      showToast('Failed to load connections', 'error');
+    }
+  }
+
+  // 2. Add new connection
+  async function addConnection() {
+    const name = document.getElementById('name').value;
+    const provider = document.getElementById('provider').value;
+    const storeId = document.getElementById('storeId').value;
+
+    if (!name || !provider) return showToast('Name and Provider are required!', 'error');
+
+    try {
+      const res = await fetch(`${API_URL}/connections`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${TOKEN}` 
+        },
+        body: JSON.stringify({ name, provider, storeId })
+      });
+      const data = await res.json();
+      
+      if (data.error) return showToast(data.error, 'error');
+      
+      showToast('Connection added successfully!');
+      document.getElementById('name').value = '';
+      document.getElementById('provider').value = '';
+      document.getElementById('storeId').value = '';
+      loadConnections();
+    } catch (error) {
+      showToast('Failed to add connection', 'error');
+    }
+  }
+
+  // 3. Test Connection
+  async function testConnection(id) {
+    showToast('Testing connection...', 'success');
+    try {
+      const res = await fetch(`${API_URL}/connections/${id}/test`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${TOKEN}` }
+      });
+      const data = await res.json();
+      if (data.error) return showToast(data.error, 'error');
+      showToast('✅ ' + data.data.message);
+    } catch (error) {
+      showToast('Test failed', 'error');
+    }
+  }
+
+  // 4. Sync Connection
+  async function syncConnection(id) {
+    showToast('Syncing data... Please wait.', 'success');
+    try {
+      const res = await fetch(`${API_URL}/connections/${id}/sync`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${TOKEN}` }
+      });
+      const data = await res.json();
+      if (data.error) return showToast(data.error, 'error');
+      showToast(`✅ Sync Done! Processed: ${data.processed}, Skipped: ${data.skipped}`);
+    } catch (error) {
+      showToast('Sync failed', 'error');
+    }
+  }
+
+  // 5. Load Sync History (A4)
+  async function loadHistory(id, storeName) {
+    try {
+      const res = await fetch(`${API_URL}/connections/${id}/jobs`, {
+        headers: { 'Authorization': `Bearer ${TOKEN}` }
+      });
+      const data = await res.json();
+      
+      if (data.error) return showToast(data.error, 'error');
+
+      document.getElementById('historyCard').style.display = 'block';
+      document.getElementById('historyTitle').innerText = `Sync History: ${storeName}`;
+      
+      const tbody = document.getElementById('historyBody');
+      tbody.innerHTML = '';
+
+      if (data.data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5">No sync history found.</td></tr>';
+        return;
+      }
+
+      data.data.forEach(job => {
+        const date = new Date(job.startedAt).toLocaleString();
+        tbody.innerHTML += `
+          <tr>
+            <td>${job.id.substring(0, 8)}...</td>
+            <td><span class="status-badge status-completed">${job.status}</span></td>
+            <td>${job.processedCount}</td>
+            <td>${job.skippedCount}</td>
+            <td>${date}</td>
+          </tr>
+        `;
+      });
+    } catch (error) {
+      showToast('Failed to load history', 'error');
+    }
+  }
+
+  // 6. Delete Connection
+  async function deleteConnection(id) {
+    if(!confirm('Are you sure you want to delete this connection?')) return;
+    try {
+      const res = await fetch(`${API_URL}/connections/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${TOKEN}` }
+      });
+      showToast('Connection deleted!');
+      loadConnections();
+    } catch (error) {
+      showToast('Failed to delete', 'error');
+    }
+  }
+
+  // Load connections on page load
+  window.onload = loadConnections;
+</script>
+</body>
+</html>

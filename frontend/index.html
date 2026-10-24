@@ -109,7 +109,7 @@
   
   // JWT Token (Aapko yeh token make-token.js se lena hai aur yahan paste karna hai)
   // Agar token expire ho jaye, toh naya token yahan paste kar dein.
-  const TOKEN = prompt("Please paste your JWT Token here:");
+  const TOKEN = localStorage.getItem('jwtToken');
 
   // Toast Notification Function
   function showToast(msg, type = 'success') {
